@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: boibritto_user
+      POSTGRES_PASSWORD: ofmiceandmen
+      POSTGRES_DB: boibritto
+    ports:
+      - "5073:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boibritto_user -d boibritto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    logging:
+      driver: journald
+      options: 
+        tag: "boibritto-postgres"
+
+
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
