@@ -21,6 +21,7 @@ func Mount(r chi.Router, a *app.App) {
 	h := &handler{svc: svc}
 
 	r.Get("/books", h.list)
+	r.Get("/books/{id}", h.get)
 	r.Post("/books", h.create)
 	r.Patch("/books/{id}", h.update)
 	r.Delete("/books/{id}", h.delete)
@@ -52,6 +53,22 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 		resp.NextCursor = &books[len(books)-1].CreatedAt
 	}
 	apihttp.RespondJSON(w, http.StatusOK, resp)
+}
+
+func (h *handler) get(w http.ResponseWriter, r *http.Request) {
+	bookID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		apihttp.RespondError(w, r, apihttp.ErrValidation("invalid book id"))
+		return
+	}
+
+	book, err := h.svc.GetBook(r.Context(), bookID)
+	if err != nil {
+		apihttp.RespondError(w, r, err)
+		return
+	}
+
+	apihttp.RespondJSON(w, http.StatusOK, book)
 }
 
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
