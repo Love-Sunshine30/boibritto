@@ -47,6 +47,14 @@ func (s *Service) CreateBook(ctx context.Context, ownerID int, req CreateBookReq
 	return toResponse(b), nil
 }
 
+func (s *Service) GetBook(ctx context.Context, bookID int) (BookResponse, error) {
+	book, err := s.store.GetBookByID(ctx, bookID)
+	if err != nil {
+		return BookResponse{}, fmt.Errorf("looking up book: %w", err)
+	}
+	return toResponse(book), nil
+}
+
 func (s *Service) UpdateBook(ctx context.Context, bookID, requesterID int, req UpdateBookRequest) (BookResponse, error) {
 	existing, err := s.store.GetBookByID(ctx, bookID)
 	if err != nil {
