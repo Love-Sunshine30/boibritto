@@ -210,25 +210,7 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /api/v1/books/search-covers:
-    get:
-      tags: [books]
-      summary: "[PLANNED] Search Open Library for cover art"
-      description: Ported from the original codebase's Open Library integration. Not yet rebuilt.
-      parameters:
-        - name: q
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Candidate cover results
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CoverSearchEnvelope"
+          
 
   # ---------------------------------------------------------------------
   # Borrow requests
