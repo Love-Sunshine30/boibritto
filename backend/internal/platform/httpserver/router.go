@@ -12,6 +12,7 @@ import (
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
 	"boibritto/internal/books"
+	"boibritto/internal/requests"
 )
 
 func NewRouter(app *app.App) chi.Router {
@@ -44,6 +45,9 @@ func NewRouter(app *app.App) chi.Router {
 
 		// registers books handlers
 		books.Mount(api, app)
+
+		// registers requests handlers
+		requests.Mount(api, app)
 
 		api.Get("/me", meHandler)
 	})
