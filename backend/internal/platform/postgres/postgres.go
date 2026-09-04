@@ -14,7 +14,7 @@ import (
 //go:embed migrations/*.sql
 var embedMigrations embed.FS
 
-// Connect opens a DB connection and runs any pending migrations.
+// Connect opens a DB connection and pings the database.
 func Connect(ctx context.Context, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("pgx", dsn)
 
