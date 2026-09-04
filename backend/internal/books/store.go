@@ -2,6 +2,7 @@ package books
 
 import (
 	"boibritto/internal/apperror"
+	"boibritto/internal/platform/postgres"
 	"context"
 	"database/sql"
 	"errors"
@@ -25,10 +26,10 @@ type Book struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db postgres.Querier
 }
 
-func NewStore(db *sql.DB) *Store {
+func NewStore(db postgres.Querier) *Store {
 	return &Store{db: db}
 }
 
@@ -136,5 +137,23 @@ func (s *Store) DeleteBook(ctx context.Context, id int) error {
 	if rows == 0 {
 		return apperror.ErrNotFound
 	}
+	return nil
+}
+
+func (s *Store) SetAvailability(ctx context.Context, q postgres.Querier, bookID int, available bool) error {
+	result, err := q.ExecContext(ctx, `UPDATE books SET available = $1 WHERE id = $2`, available, bookID)
+	if err != nil {
+		return fmt.Errorf("updating book availability: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking update result: %w", err)
+	}
+
+	if rows == 0 {
+		return apperror.ErrNotFound
+	}
+
 	return nil
 }
