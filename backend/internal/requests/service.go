@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"boibritto/internal/apperror"
+	"boibritto/internal/books"
 	"boibritto/internal/platform/postgres"
 )
 
@@ -21,23 +22,37 @@ type requestStore interface {
 	SetBorrowerConfirmed(ctx context.Context, q postgres.Querier, id int, confirmed bool) error
 }
 
-type bookStore interface {
-	SetAvailability(ctx context.Context, q postgres.Querier, bookID int, available bool) error
+type profileChecker interface {
+	IsProfileComplete(ctx context.Context, userID int) (bool, error)
 }
 
+type bookStore interface {
+	GetBookByID(ctx context.Context, bookID int) (books.Book, error)
+	SetAvailability(ctx context.Context, q postgres.Querier, bookID int, available bool) error
+}
 type Service struct {
 	db        *sql.DB
 	store     requestStore
 	bookStore bookStore
 	notifier  Notifier
+	profile   profileChecker
 	logger    *slog.Logger
 }
 
-func NewService(db *sql.DB, store requestStore, bookStore bookStore, notifier Notifier, logger *slog.Logger) *Service {
-	return &Service{db: db, store: store, bookStore: bookStore, notifier: notifier, logger: logger}
+func NewService(db *sql.DB, store requestStore, bookStore bookStore, notifier Notifier, profile profileChecker, logger *slog.Logger) *Service {
+	return &Service{db: db, store: store, bookStore: bookStore, notifier: notifier, profile: profile, logger: logger}
 }
 
 func (s *Service) CreateRequest(ctx context.Context, bookID, requesterID, bookOwnerID int, message string) (BorrowRequestResponse, error) {
+
+	complete, err := s.profile.IsProfileComplete(ctx, bookID)
+	if err != nil {
+		return BorrowRequestResponse{}, fmt.Errorf("checking profile: %w", err)
+	}
+	if !complete {
+		return BorrowRequestResponse{}, fmt.Errorf("%w: complete your profile (WhatsApp number) before listing a book", apperror.ErrForbidden)
+	}
+
 	if requesterID == bookOwnerID {
 		return BorrowRequestResponse{}, fmt.Errorf("%w: you can't request your own book", apperror.ErrValidation)
 	}

@@ -157,3 +157,30 @@ func (s *Store) SetAvailability(ctx context.Context, q postgres.Querier, bookID 
 
 	return nil
 }
+
+func (s *Store) ListByOwner(ctx context.Context, ownerID, limit int) ([]Book, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT b.id, b.title, b.author, b.genre, b.description, b.cover_url,
+		       b.available, b.owner_id, u.name, b.created_at
+		FROM books b
+		JOIN users u ON u.id = b.owner_id
+		WHERE b.owner_id = $1
+		ORDER BY b.created_at DESC
+		LIMIT $2
+	`, ownerID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying books by owner: %w", err)
+	}
+	defer rows.Close()
+
+	var books []Book
+	for rows.Next() {
+		var b Book
+		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Genre, &b.Description,
+			&b.CoverURL, &b.Available, &b.OwnerID, &b.OwnerName, &b.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning book: %w", err)
+		}
+		books = append(books, b)
+	}
+	return books, rows.Err()
+}

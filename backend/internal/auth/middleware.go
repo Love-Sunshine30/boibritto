@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	fbauth "firebase.google.com/go/v4/auth"
 
@@ -16,10 +17,19 @@ type ctxKey string
 
 const userCtxKey ctxKey = "auth_user"
 
+// ActivityTracker is the narrow interface RequireAuth depends on for
+// recording last-active timestamps. auth doesn't import profile directly —
+// profile.Store satisfies this interface structurally, and the concrete
+// type is only wired together in the router (the composition root), which
+// is allowed to import everything.
+type ActivityTracker interface {
+	TouchLastActive(ctx context.Context, userID int, throttleWindow time.Duration) error
+}
+
 // RequireAuth verifies the Firebase ID token on every request's
 // Authorization header, JIT-provisions a local user record on first sign-in,
 // and injects the resulting domain.User into the request context.
-func RequireAuth(fbAuth *fbauth.Client, store *Store, logger *slog.Logger) func(http.Handler) http.Handler {
+func RequireAuth(fbAuth *fbauth.Client, store *Store, activity ActivityTracker, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token, err := extractBearerToken(r)
@@ -43,6 +53,11 @@ func RequireAuth(fbAuth *fbauth.Client, store *Store, logger *slog.Logger) func(
 				logger.Error("failed to provision user", "error", err, "firebase_uid", verified.UID)
 				apihttp.RespondError(w, r, apihttp.ErrInternal("could not resolve user"))
 				return
+			}
+
+			// Best-effort, throttled — a failure here shouldn't block the request.
+			if err := activity.TouchLastActive(r.Context(), user.ID, 60*time.Second); err != nil {
+				logger.Error("failed to touch last_active_at", "error", err, "user_id", user.ID)
 			}
 
 			ctx := context.WithValue(r.Context(), userCtxKey, user)

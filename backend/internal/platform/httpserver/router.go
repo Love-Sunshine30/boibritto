@@ -12,6 +12,7 @@ import (
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
 	"boibritto/internal/books"
+	"boibritto/internal/profile"
 	"boibritto/internal/push"
 	"boibritto/internal/requests"
 )
@@ -45,20 +46,27 @@ func NewRouter(app *app.App) chi.Router {
 	pushSender := push.NewFCMSender(app.Firebase.Messaging, pushStore, app.Logger.Logger)
 	notifier := push.NewRequestNotifier(pushSender)
 
+	// profile activity tracker
+	activityTracker := profile.NewStore(app.DB)
+
+	// profile checker checks if profile has whatsApp number and name before a user can list book or make request
+	profileChecker := profile.NewStore(app.DB)
+
 	// --- Authenticated routes ---
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(auth.RequireAuth(app.Firebase.Auth, app.AuthStore, app.Logger.Logger))
+		api.Use(auth.RequireAuth(app.Firebase.Auth, app.AuthStore, activityTracker, app.Logger.Logger))
 
 		// registers books handlers
-		books.Mount(api, app)
+		books.Mount(api, app, profileChecker)
 
 		// registers requests handlers
-		requests.Mount(api, app, notifier)
+		requests.Mount(api, app, profileChecker, notifier)
 
 		// registers push handlers
 		push.Mount(api, app, pushStore)
 
-		api.Get("/me", meHandler)
+		// registers profile handlers
+		profile.Mount(api, app)
 	})
 
 	return r
@@ -66,13 +74,4 @@ func NewRouter(app *app.App) chi.Router {
 
 func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	apihttp.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func meHandler(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
-	if !ok {
-		apihttp.RespondError(w, r, apihttp.ErrInternal("user missing from context"))
-		return
-	}
-	apihttp.RespondJSON(w, http.StatusOK, user)
 }

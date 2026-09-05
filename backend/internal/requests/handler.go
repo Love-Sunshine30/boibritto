@@ -13,23 +13,22 @@ import (
 	"boibritto/internal/books"
 )
 
-func Mount(r chi.Router, a *app.App, notifier Notifier) {
-	bookStore := books.NewStore(a.DB)
+func Mount(r chi.Router, a *app.App, profileChecker profileChecker, notifier Notifier) {
 	reqStore := NewStore(a.DB)
-	svc := NewService(a.DB, reqStore, bookStore, notifier, a.Logger.Logger)
-	h := &handler{svc: svc, bookStore: bookStore}
+	bookStore := books.NewStore(a.DB) // requests imports books package here
+	svc := NewService(a.DB, reqStore, bookStore, notifier, profileChecker, a.Logger.Logger)
+	h := &handler{svc: svc}
 
 	r.Post("/books/{id}/requests", h.create)
 	r.Get("/requests/sent", h.listSent)
 	r.Get("/requests/incoming", h.listIncoming)
 	r.Patch("/requests/{id}", h.updateStatus)
-	r.Post("/requests/{id}/confirm", h.confirmHandoff) // ← nw
+	r.Post("/requests/{id}/confirm", h.confirmHandoff)
 	r.Post("/requests/{id}/return", h.markReturned)
 }
 
 type handler struct {
-	svc       *Service
-	bookStore *books.Store
+	svc *Service
 }
 
 func currentUserID(w http.ResponseWriter, r *http.Request) (int, bool) {
@@ -57,7 +56,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	// extract the message from request body
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	book, err := h.bookStore.GetBookByID(r.Context(), bookID)
+	book, err := h.svc.bookStore.GetBookByID(r.Context(), bookID)
 	if err != nil {
 		apihttp.RespondError(w, r, err)
 		return

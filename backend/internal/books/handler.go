@@ -16,8 +16,9 @@ import (
 // Mount registers this domain's routes onto the given router, pulling its
 // own dependencies off App. This is the pattern every domain package follows
 // — router.go just calls Mount, never wires up a domain's internals itself.
-func Mount(r chi.Router, a *app.App) {
-	svc := NewService(NewStore(a.DB))
+func Mount(r chi.Router, a *app.App, profileChecker profileChecker) {
+	store := NewStore(a.DB)
+	svc := NewService(store, profileChecker)
 	h := &handler{svc: svc}
 
 	r.Get("/books", h.list)
