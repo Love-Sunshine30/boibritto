@@ -15,13 +15,14 @@ type App struct {
 }
 
 type User struct {
-	ID             int       `json:"id"`
-	FirebaseUID    string    `json:"-"` // internal only — never expose to clients
-	Name           string    `json:"name"`
-	Email          string    `json:"email"`
-	WhatsAppNumber *string   `json:"whatsapp_number"`
-	IsAdmin        bool      `json:"-"` // internal only — clients don't need to see this on arbitrary user objects
-	CreatedAt      time.Time `json:"created_at"`
+	ID             int        `json:"id"`
+	FirebaseUID    string     `json:"-"`
+	Name           string     `json:"name"`
+	Email          string     `json:"email"`
+	WhatsAppNumber *string    `json:"whatsapp_number"`
+	LastActiveAt   *time.Time `json:"last_active_at"`
+	IsAdmin        bool       `json:"-"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 type Book struct {

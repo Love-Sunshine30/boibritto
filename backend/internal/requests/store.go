@@ -114,7 +114,70 @@ func (s *Store) listWhere(ctx context.Context, whereClause string, arg int) ([]B
 }
 
 func (s *Store) UpdateStatus(ctx context.Context, q postgres.Querier, id int, status Status) error {
-	return s.execUpdate(ctx, q, `UPDATE borrow_requests SET status = $1 WHERE id = $2`, status, id)
+	var query string
+	var args []any
+	if status == StatusAccepted {
+		query = `UPDATE borrow_requests SET status = $1, updated_at = now(), accepted_at = now() WHERE id = $2`
+		args = []any{status, id}
+	} else {
+		query = `UPDATE borrow_requests SET status = $1, updated_at = now() WHERE id = $2`
+		args = []any{status, id}
+	}
+	return s.execUpdate(ctx, q, query, args...)
+}
+
+// ActivityEvent is a minimal shape for feed composition — deliberately not
+// the full BorrowRequest, just what an activity item needs to render.
+type ActivityEvent struct {
+	BookTitle string
+	Timestamp time.Time
+}
+
+func (s *Store) RecentSent(ctx context.Context, requesterID, limit int) ([]ActivityEvent, error) {
+	return s.queryActivity(ctx, `
+		SELECT b.title, br.created_at FROM borrow_requests br
+		JOIN books b ON b.id = br.book_id
+		WHERE br.requester_id = $1
+		ORDER BY br.created_at DESC LIMIT $2
+	`, requesterID, limit)
+}
+
+// RecentAcceptedAsOwner — requests this user accepted for books they own.
+func (s *Store) RecentAcceptedAsOwner(ctx context.Context, ownerID, limit int) ([]ActivityEvent, error) {
+	return s.queryActivity(ctx, `
+		SELECT b.title, br.accepted_at FROM borrow_requests br
+		JOIN books b ON b.id = br.book_id
+		WHERE b.owner_id = $1 AND br.accepted_at IS NOT NULL
+		ORDER BY br.accepted_at DESC LIMIT $2
+	`, ownerID, limit)
+}
+
+// RecentAcceptedAsRequester — this user's own requests that got accepted.
+func (s *Store) RecentAcceptedAsRequester(ctx context.Context, requesterID, limit int) ([]ActivityEvent, error) {
+	return s.queryActivity(ctx, `
+		SELECT b.title, br.accepted_at FROM borrow_requests br
+		JOIN books b ON b.id = br.book_id
+		WHERE br.requester_id = $1 AND br.accepted_at IS NOT NULL
+		ORDER BY br.accepted_at DESC LIMIT $2
+	`, requesterID, limit)
+}
+
+func (s *Store) queryActivity(ctx context.Context, query string, arg, limit int) ([]ActivityEvent, error) {
+	rows, err := s.db.QueryContext(ctx, query, arg, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying activity: %w", err)
+	}
+	defer rows.Close()
+
+	var events []ActivityEvent
+	for rows.Next() {
+		var e ActivityEvent
+		if err := rows.Scan(&e.BookTitle, &e.Timestamp); err != nil {
+			return nil, fmt.Errorf("scanning activity: %w", err)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
 }
 
 // SetOwnerConfirmed and SetBorrowerConfirmed are separate, narrow methods

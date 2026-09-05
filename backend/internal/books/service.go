@@ -9,12 +9,17 @@ import (
 	"boibritto/internal/apperror"
 )
 
-type Service struct {
-	store *Store
+type profileChecker interface {
+	IsProfileComplete(ctx context.Context, userID int) (bool, error)
 }
 
-func NewService(store *Store) *Service {
-	return &Service{store: store}
+type Service struct {
+	store   *Store
+	profile profileChecker
+}
+
+func NewService(store *Store, profile profileChecker) *Service {
+	return &Service{store: store, profile: profile}
 }
 
 func (s *Service) ListBooks(ctx context.Context, cursor *time.Time) ([]BookResponse, error) {
@@ -30,6 +35,16 @@ func (s *Service) ListBooks(ctx context.Context, cursor *time.Time) ([]BookRespo
 }
 
 func (s *Service) CreateBook(ctx context.Context, ownerID int, req CreateBookRequest) (BookResponse, error) {
+
+	// There is a bug here
+	complete, err := s.profile.IsProfileComplete(ctx, ownerID)
+	if err != nil {
+		return BookResponse{}, fmt.Errorf("checking profile: %w", err)
+	}
+	if !complete {
+		return BookResponse{}, fmt.Errorf("%w: complete your profile (WhatsApp number) before listing a book", apperror.ErrForbidden)
+	}
+
 	req.Title = strings.TrimSpace(req.Title)
 	req.Author = strings.TrimSpace(req.Author)
 
