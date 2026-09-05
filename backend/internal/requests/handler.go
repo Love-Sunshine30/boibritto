@@ -23,7 +23,7 @@ func Mount(r chi.Router, a *app.App) {
 	r.Get("/requests/sent", h.listSent)
 	r.Get("/requests/incoming", h.listIncoming)
 	r.Patch("/requests/{id}", h.updateStatus)
-	r.Post("/requests/{id}/confirm", h.confirmHandoff) // ← new
+	r.Post("/requests/{id}/confirm", h.confirmHandoff) // ← nw
 	r.Post("/requests/{id}/return", h.markReturned)
 }
 
