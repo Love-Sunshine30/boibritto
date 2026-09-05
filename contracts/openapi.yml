@@ -159,7 +159,7 @@ paths:
       - $ref: "#/components/parameters/BookId"
     get:
       tags: [books]
-      summary: "[PLANNED] Get a single book by ID"
+      summary: "[IMPLEMENTED] Get a single book by ID"
       description: Not yet implemented — currently only list/create/update/delete exist.
       responses:
         "200":
@@ -220,7 +220,7 @@ paths:
       - $ref: "#/components/parameters/BookId"
     post:
       tags: [requests]
-      summary: "[PLANNED] Request to borrow a book"
+      summary: "[IMPLEMENTED] Request to borrow a book"
       description: Not yet implemented.
       responses:
         "201":
@@ -243,7 +243,7 @@ paths:
   /api/v1/requests/sent:
     get:
       tags: [requests]
-      summary: "[PLANNED] List borrow requests the authenticated user has sent"
+      summary: "[IMPLEMENTED] List borrow requests the authenticated user has sent"
       responses:
         "200":
           description: Sent requests
@@ -255,7 +255,7 @@ paths:
   /api/v1/requests/incoming:
     get:
       tags: [requests]
-      summary: "[PLANNED] List borrow requests for books the authenticated user owns"
+      summary: "[IMPLEMENTED] List borrow requests for books the authenticated user owns"
       responses:
         "200":
           description: Incoming requests
@@ -273,7 +273,7 @@ paths:
           type: integer
     patch:
       tags: [requests]
-      summary: "[PLANNED] Accept or reject a borrow request"
+      summary: "[IMPLEMENTED] Accept or reject a borrow request"
       description: >
         Only the book's owner may accept/reject a request for their book.
         Not yet implemented.
@@ -307,7 +307,7 @@ paths:
           type: integer
     post:
       tags: [requests]
-      summary: "[PLANNED] Mark a borrowed book as returned"
+      summary: "[IMPLEMENTED] Mark a borrowed book as returned"
       description: >
         Owner-only. Runs transactionally: request status → `returned`, the
         book's `available` flag → `true`, and the borrower's returned-book
@@ -328,6 +328,59 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           $ref: "#/components/responses/Forbidden"
+          
+  /api/v1/requests/{id}/confirm:
+  parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+  post:
+    tags: [requests]
+    summary: "[IMPLEMENTED] Confirm physical handoff of the book"
+    description: >
+      Either participant (owner or borrower) may call this once, after the
+      request has been accepted, to confirm the physical exchange actually
+      happened. The caller's role is determined server-side from the
+      request's owner/requester IDs — not a client-supplied role.
+
+      The book remains available until **both** parties have confirmed.
+      Once both `owner_confirmed` and `borrower_confirmed` are true, the
+      request transitions to `active` and the book's `available` flag is
+      set to `false`, atomically (single DB transaction — see backend
+      progress notes on internal/requests.Service.ConfirmHandoff).
+
+      If only one side has confirmed so far, the other participant is
+      notified (best-effort; a failed notification does not fail this
+      request).
+    responses:
+      "200":
+        description: >
+          The updated request. If this was the second confirmation,
+          `status` will be `active` and the book is now unavailable. If
+          this was the first confirmation, `status` remains `accepted`.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BorrowRequestEnvelope"
+      "400":
+        description: Request has not been accepted yet, or is in a state that can't be confirmed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorEnvelope"
+      "401":
+        $ref: "#/components/responses/Unauthorized"
+      "403":
+        description: Caller is not a participant (owner or requester) in this request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorEnvelope"
+      "404":
+        $ref: "#/components/responses/NotFound"
+
 
   # ---------------------------------------------------------------------
   # Messages
