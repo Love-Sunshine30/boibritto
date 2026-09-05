@@ -13,10 +13,10 @@ import (
 	"boibritto/internal/books"
 )
 
-func Mount(r chi.Router, a *app.App) {
+func Mount(r chi.Router, a *app.App, notifier Notifier) {
 	bookStore := books.NewStore(a.DB)
 	reqStore := NewStore(a.DB)
-	svc := NewService(a.DB, reqStore, bookStore, NoopNotifier{}, a.Logger.Logger)
+	svc := NewService(a.DB, reqStore, bookStore, notifier, a.Logger.Logger)
 	h := &handler{svc: svc, bookStore: bookStore}
 
 	r.Post("/books/{id}/requests", h.create)

@@ -12,6 +12,7 @@ import (
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
 	"boibritto/internal/books"
+	"boibritto/internal/push"
 	"boibritto/internal/requests"
 )
 
@@ -39,6 +40,11 @@ func NewRouter(app *app.App) chi.Router {
 	// --- Public routes ---
 	r.Get("/healthz", healthzHandler)
 
+	// initializing FCM push notification
+	pushStore := push.NewStore(app.DB)
+	pushSender := push.NewFCMSender(app.Firebase.Messaging, pushStore, app.Logger.Logger)
+	notifier := push.NewRequestNotifier(pushSender)
+
 	// --- Authenticated routes ---
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(auth.RequireAuth(app.Firebase.Auth, app.AuthStore, app.Logger.Logger))
@@ -47,7 +53,10 @@ func NewRouter(app *app.App) chi.Router {
 		books.Mount(api, app)
 
 		// registers requests handlers
-		requests.Mount(api, app)
+		requests.Mount(api, app, notifier)
+
+		// registers push handlers
+		push.Mount(api, app, pushStore)
 
 		api.Get("/me", meHandler)
 	})
