@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"boibritto/internal/apperror"
 )
@@ -22,8 +21,8 @@ func NewService(store *Store, profile profileChecker) *Service {
 	return &Service{store: store, profile: profile}
 }
 
-func (s *Service) ListBooks(ctx context.Context, cursor *time.Time) ([]BookResponse, error) {
-	books, err := s.store.ListBooks(ctx, cursor)
+func (s *Service) ListBooks(ctx context.Context, filter ListBooksFilter) ([]BookResponse, error) {
+	books, err := s.store.ListBooks(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("listing books: %w", err)
 	}

@@ -43,7 +43,13 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request) {
 		cursor = &t
 	}
 
-	books, err := h.svc.ListBooks(r.Context(), cursor)
+	filter := ListBooksFilter{
+		Cursor: cursor,
+		Query:  r.URL.Query().Get("q"),
+		Genre:  r.URL.Query().Get("genre"),
+	}
+
+	books, err := h.svc.ListBooks(r.Context(), filter)
 	if err != nil {
 		apihttp.RespondError(w, r, err)
 		return
