@@ -12,6 +12,7 @@ import (
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
 	"boibritto/internal/books"
+	"boibritto/internal/messages"
 	"boibritto/internal/profile"
 	"boibritto/internal/push"
 	"boibritto/internal/requests"
@@ -52,6 +53,9 @@ func NewRouter(app *app.App) chi.Router {
 	// profile checker checks if profile has whatsApp number and name before a user can list book or make request
 	profileChecker := profile.NewStore(app.DB)
 
+	messageNotifier := push.NewMessageNotifier(pushSender)
+	requestThreadCreator := messages.NewService(messages.NewStore(app.Firebase.Firestore), profile.NewStore(app.DB), messageNotifier)
+
 	// --- Authenticated routes ---
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(auth.RequireAuth(app.Firebase.Auth, app.AuthStore, activityTracker, app.Logger.Logger))
@@ -60,13 +64,16 @@ func NewRouter(app *app.App) chi.Router {
 		books.Mount(api, app, profileChecker)
 
 		// registers requests handlers
-		requests.Mount(api, app, profileChecker, notifier)
+		requests.Mount(api, app, profileChecker, notifier, requestThreadCreator)
 
 		// registers push handlers
 		push.Mount(api, app, pushStore)
 
 		// registers profile handlers
 		profile.Mount(api, app)
+
+		// registers messages handlers
+		messages.Mount(api, app, messageNotifier)
 	})
 
 	return r

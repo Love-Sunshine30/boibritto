@@ -3,6 +3,7 @@ package app
 import (
 	"database/sql"
 
+	"cloud.google.com/go/firestore"
 	fbauth "firebase.google.com/go/v4/auth"
 	fbmessaging "firebase.google.com/go/v4/messaging"
 	"github.com/go-chi/httplog/v2"
@@ -27,6 +28,7 @@ type App struct {
 type FirebaseClients struct {
 	Auth      *fbauth.Client
 	Messaging *fbmessaging.Client
+	Firestore *firestore.Client
 }
 
 // New wires together an App from already-initialized dependencies. It
