@@ -35,17 +35,34 @@ func NewStore(db postgres.Querier) *Store {
 
 const pageSize = 20
 
-func (s *Store) ListBooks(ctx context.Context, cursor *time.Time) ([]Book, error) {
+type ListBooksFilter struct {
+	Cursor *time.Time
+	Query  string // matches against title OR author, case-insensitive, partial match
+	Genre  string // exact match, case-insensitive
+}
+
+func (s *Store) ListBooks(ctx context.Context, filter ListBooksFilter) ([]Book, error) {
 	query := `
 		SELECT b.id, b.title, b.author, b.genre, b.description, b.cover_url,
 		       b.available, b.owner_id, u.name, b.created_at
 		FROM books b
 		JOIN users u ON u.id = b.owner_id
 		WHERE ($1::timestamptz IS NULL OR b.created_at < $1)
+		  AND ($2::text IS NULL OR b.title ILIKE '%' || $2 || '%' OR b.author ILIKE '%' || $2 || '%')
+		  AND ($3::text IS NULL OR b.genre ILIKE $3)
 		ORDER BY b.created_at DESC
-		LIMIT $2
+		LIMIT $4
 	`
-	rows, err := s.db.QueryContext(ctx, query, cursor, pageSize)
+
+	var queryArg, genreArg *string
+	if filter.Query != "" {
+		queryArg = &filter.Query
+	}
+	if filter.Genre != "" {
+		genreArg = &filter.Genre
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, filter.Cursor, queryArg, genreArg, pageSize)
 	if err != nil {
 		return nil, fmt.Errorf("querying books: %w", err)
 	}
@@ -60,10 +77,7 @@ func (s *Store) ListBooks(ctx context.Context, cursor *time.Time) ([]Book, error
 		}
 		books = append(books, b)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating book rows: %w", err)
-	}
-	return books, nil
+	return books, rows.Err()
 }
 
 func (s *Store) InsertBook(ctx context.Context, ownerID int, req CreateBookRequest) (Book, error) {

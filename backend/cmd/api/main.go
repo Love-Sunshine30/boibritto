@@ -33,11 +33,13 @@ func main() {
 
 	// Connects database
 	db := mustConnectDB(ctx, cfg, logger.Logger)
+	defer db.Close()
 
 	// app holds all app-wide dependencies
 	app := app.New(cfg, logger, db, app.FirebaseClients{
 		Auth:      fbClients.Auth,
 		Messaging: fbClients.Messaging,
+		Firestore: fbClients.Firestore,
 	})
 
 	// Chi router

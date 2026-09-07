@@ -30,17 +30,23 @@ type bookStore interface {
 	GetBookByID(ctx context.Context, bookID int) (books.Book, error)
 	SetAvailability(ctx context.Context, q postgres.Querier, bookID int, available bool) error
 }
-type Service struct {
-	db        *sql.DB
-	store     requestStore
-	bookStore bookStore
-	notifier  Notifier
-	profile   profileChecker
-	logger    *slog.Logger
+
+type threadCreator interface {
+	CreateThread(ctx context.Context, requestID, bookID int, bookTitle string, ownerID, requesterID int) error
 }
 
-func NewService(db *sql.DB, store requestStore, bookStore bookStore, notifier Notifier, profile profileChecker, logger *slog.Logger) *Service {
-	return &Service{db: db, store: store, bookStore: bookStore, notifier: notifier, profile: profile, logger: logger}
+type Service struct {
+	db            *sql.DB
+	store         requestStore
+	bookStore     bookStore
+	notifier      Notifier
+	profile       profileChecker
+	threadCreator threadCreator
+	logger        *slog.Logger
+}
+
+func NewService(db *sql.DB, store requestStore, bookStore bookStore, notifier Notifier, profile profileChecker, threadcreator threadCreator, logger *slog.Logger) *Service {
+	return &Service{db: db, store: store, bookStore: bookStore, notifier: notifier, profile: profile, threadCreator: threadcreator, logger: logger}
 }
 
 func (s *Service) CreateRequest(ctx context.Context, bookID, requesterID, bookOwnerID int, message string) (BorrowRequestResponse, error) {
@@ -93,6 +99,7 @@ func (s *Service) ListIncoming(ctx context.Context, ownerID int) ([]BorrowReques
 
 // UpdateStatus handles accept/reject — owner-only, only valid from pending.
 func (s *Service) UpdateStatus(ctx context.Context, requestID, ownerID int, newStatus Status) (BorrowRequestResponse, error) {
+
 	if newStatus != StatusAccepted && newStatus != StatusRejected {
 		return BorrowRequestResponse{}, fmt.Errorf("%w: status must be accepted or rejected", apperror.ErrValidation)
 	}
@@ -106,6 +113,14 @@ func (s *Service) UpdateStatus(ctx context.Context, requestID, ownerID int, newS
 	}
 	if existing.Status != StatusPending {
 		return BorrowRequestResponse{}, fmt.Errorf("%w: request is not pending", apperror.ErrValidation)
+	}
+
+	if newStatus == StatusAccepted {
+		if err := s.threadCreator.CreateThread(ctx, requestID, existing.BookID, existing.BookTitle, existing.OwnerID, existing.RequesterID); err != nil {
+			s.logger.Error("failed to create message thread", "error", err, "request_id", requestID)
+			// deliberately not returned as a request error — the accept itself
+			// succeeded; a thread-creation failure shouldn't roll that back
+		}
 	}
 
 	if err := s.store.UpdateStatus(ctx, s.db, requestID, newStatus); err != nil {

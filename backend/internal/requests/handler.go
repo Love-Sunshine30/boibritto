@@ -13,10 +13,10 @@ import (
 	"boibritto/internal/books"
 )
 
-func Mount(r chi.Router, a *app.App, profileChecker profileChecker, notifier Notifier) {
+func Mount(r chi.Router, a *app.App, profileChecker profileChecker, notifier Notifier, threadCreator threadCreator) {
 	reqStore := NewStore(a.DB)
 	bookStore := books.NewStore(a.DB) // requests imports books package here
-	svc := NewService(a.DB, reqStore, bookStore, notifier, profileChecker, a.Logger.Logger)
+	svc := NewService(a.DB, reqStore, bookStore, notifier, profileChecker, threadCreator, a.Logger.Logger)
 	h := &handler{svc: svc}
 
 	r.Post("/books/{id}/requests", h.create)
