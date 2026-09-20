@@ -12,6 +12,7 @@ import (
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
 	"boibritto/internal/books"
+	"boibritto/internal/forum"
 	"boibritto/internal/messages"
 	"boibritto/internal/profile"
 	"boibritto/internal/push"
@@ -74,6 +75,9 @@ func NewRouter(app *app.App) chi.Router {
 
 		// registers messages handlers
 		messages.Mount(api, app, messageNotifier)
+
+		// registeres forum handlers
+		forum.Mount(api, app)
 	})
 
 	return r
