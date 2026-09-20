@@ -8,16 +8,24 @@ import (
 	"boibritto/internal/apperror"
 )
 
+type bookStore interface {
+	ListBooks(ctx context.Context, filter ListBooksFilter) ([]Book, error)
+	InsertBook(ctx context.Context, ownerID int, req CreateBookRequest) (Book, error)
+	GetBookByID(ctx context.Context, id int) (Book, error)
+	UpdateBook(ctx context.Context, id int, req UpdateBookRequest) (Book, error)
+	DeleteBook(ctx context.Context, id int) error
+}
+
 type profileChecker interface {
 	IsProfileComplete(ctx context.Context, userID int) (bool, error)
 }
 
 type Service struct {
-	store   *Store
+	store   bookStore
 	profile profileChecker
 }
 
-func NewService(store *Store, profile profileChecker) *Service {
+func NewService(store bookStore, profile profileChecker) *Service {
 	return &Service{store: store, profile: profile}
 }
 
