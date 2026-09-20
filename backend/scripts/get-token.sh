@@ -8,8 +8,8 @@ if [ -f .env.dev ]; then
   set +a
 fi
 
-EMAIL="${1:-usera@example.com}"
-PASSWORD="${2:-passwordA}"
+EMAIL="${1:-hasan@email.com}"
+PASSWORD="${2:-password}"
 WEB_API_KEY="${FIREBASE_WEB_API_KEY:?FIREBASE_WEB_API_KEY not set in .env.dev}"
 
 curl -s -X POST \

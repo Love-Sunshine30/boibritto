@@ -51,7 +51,7 @@ func NewService(db *sql.DB, store requestStore, bookStore bookStore, notifier No
 
 func (s *Service) CreateRequest(ctx context.Context, bookID, requesterID, bookOwnerID int, message string) (BorrowRequestResponse, error) {
 
-	complete, err := s.profile.IsProfileComplete(ctx, bookID)
+	complete, err := s.profile.IsProfileComplete(ctx, bookOwnerID)
 	if err != nil {
 		return BorrowRequestResponse{}, fmt.Errorf("checking profile: %w", err)
 	}
