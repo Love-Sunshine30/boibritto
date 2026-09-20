@@ -198,3 +198,11 @@ func (s *Store) ListByOwner(ctx context.Context, ownerID, limit int) ([]Book, er
 	}
 	return books, rows.Err()
 }
+
+func (s *Store) SetCover(ctx context.Context, bookID int, coverURL string) (Book, error) {
+	_, err := s.db.ExecContext(ctx, `UPDATE books SET cover_url = $1 WHERE id = $2`, coverURL, bookID)
+	if err != nil {
+		return Book{}, fmt.Errorf("updating cover: %w", err)
+	}
+	return s.GetBookByID(ctx, bookID)
+}

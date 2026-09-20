@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v2"
 
+	"boibritto/internal/admin"
 	"boibritto/internal/apihttp"
 	"boibritto/internal/app"
 	"boibritto/internal/auth"
@@ -78,6 +79,9 @@ func NewRouter(app *app.App) chi.Router {
 
 		// registeres forum handlers
 		forum.Mount(api, app)
+
+		// registers admin handlers
+		admin.Mount(api, app)
 	})
 
 	return r
