@@ -42,6 +42,10 @@ func ErrInternal(msg string) *APIError {
 	return &APIError{Status: http.StatusInternalServerError, Code: "internal_error", Message: msg}
 }
 
+func ErrTooManyRequests(msg string) *APIError {
+	return &APIError{Status: http.StatusTooManyRequests, Code: "too many request", Message: msg}
+}
+
 // toAPIError maps any error into an *APIError. If it's already one, it's
 // returned as-is. If it's (or wraps) one of the apperror sentinels that
 // service.go files return, it's mapped to the matching APIError. Anything

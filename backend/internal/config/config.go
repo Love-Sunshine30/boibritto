@@ -15,6 +15,7 @@ type Config struct {
 	FirebaseProjectID      string
 	FirebaseServiceAccount string
 	CORSAllowedOrigins     []string
+	TrustedProxyCIDRs      []string
 }
 
 // Load reads configuration from the environment. In dev, it first attempts to
@@ -37,6 +38,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		Env:                env,
 		Port:               getEnv("PORT", "8080"),
+		TrustedProxyCIDRs:  splitCSV(getEnv("TRUSTED_PROXY_CIDRS", "")),
 		CORSAllowedOrigins: splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "")),
 	}
 

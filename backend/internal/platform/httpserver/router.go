@@ -28,7 +28,9 @@ func NewRouter(app *app.App) chi.Router {
 	r.Use(httplog.RequestLogger(app.Logger))
 	r.Use(middleware.Recoverer)
 	r.Use(apihttp.WithLogger(app.Logger.Logger)) // makes *slog.Logger available to RespondError via context
-	r.Use(apihttp.MaxBodySize(1 << 20))          // limit request body to 1MB
+	r.Use(apihttp.TrustedProxyIP(app.Config.TrustedProxyCIDRs...))
+	r.Use(apihttp.RateLimit(300))
+	r.Use(apihttp.MaxBodySize(1 << 20)) // limit request body to 1MB
 
 	// CORS must run before any route-specific middleware (like RequireAuth),
 	// and it must handle OPTIONS preflight requests itself — it does, by
