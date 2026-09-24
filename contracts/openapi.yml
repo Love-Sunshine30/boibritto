@@ -1,86 +1,311 @@
 openapi: 3.0.3
-info:
-  title: boibritto API
-  description: >
-    JSON API for boibritto — a book-lending platform. Serves two Flutter
-    clients (Web and Android). Identity is managed by Firebase Authentication;
-    every authenticated request carries a Firebase ID token as a Bearer token.
 
-    **Status legend:** endpoints marked `[IMPLEMENTED]` in their summary are
-    built and verified working. Endpoints marked `[PLANNED]` describe the
-    agreed contract but are not yet built — implementers should treat their
-    request/response shapes as the target to build against, subject to
-    revision as each is actually implemented.
-  version: "0.1.0"
-  contact:
-    name: boibritto backend team
+info:
+  title: Boibritto API
+  version: 1.0.0
+  description: |
+    HTTP API for Boibritto, a peer-to-peer book-sharing platform.
+    All /api/v1 endpoints require a Firebase ID token in the Authorization header.
 
 servers:
-  - url: http://localhost:8080
-    description: Local development
-  - url: https://api.boibritto.com
-    description: Production (planned — not yet deployed)
+  - url: /api/v1
+    description: API v1
 
 tags:
-  - name: system
-  - name: profile
-    description: The authenticated user's own profile
-  - name: books
-  - name: requests
-    description: Borrow requests
-  - name: messages
-    description: In-thread messaging (planned — Firestore-backed, see docs)
-  - name: push
-    description: FCM push subscription management (planned)
-  - name: admin
-    description: Admin-only endpoints (planned)
-
-security:
-  - BearerAuth: []
+  - name: Health
+  - name: Books
+  - name: Borrow Requests
+  - name: Profile
+  - name: Messages
+  - name: Push Notifications
+  - name: Forum
+  - name: Admin
 
 paths:
-  # ---------------------------------------------------------------------
-  # System
-  # ---------------------------------------------------------------------
   /healthz:
     get:
-      tags: [system]
-      summary: "[IMPLEMENTED] Health check"
+      tags: [Health]
+      summary: Check API and database health
       security: []
       responses:
         "200":
-          description: Service is healthy
+          description: API and database are healthy
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthEnvelope"
+                $ref: "#/components/schemas/SuccessHealthResponse"
+        "503":
+          description: Database is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
 
-  # ---------------------------------------------------------------------
-  # Profile
-  # ---------------------------------------------------------------------
-  /api/v1/me:
+  /books:
     get:
-      tags: [profile]
-      summary: "[IMPLEMENTED] Get the authenticated user's profile"
-      description: >
-        Verifies the Firebase ID token and returns the corresponding local
-        user record, provisioning one on first sign-in if it doesn't exist
-        yet (just-in-time provisioning).
+      tags: [Books]
+      summary: List books
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - name: q
+          in: query
+          description: Case-insensitive partial match against title or author
+          schema:
+            type: string
+        - name: genre
+          in: query
+          description: Case-insensitive exact genre filter
+          schema:
+            type: string
       responses:
         "200":
-          description: The authenticated user
+          description: Book list
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserEnvelope"
+                $ref: "#/components/schemas/BookListEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+    post:
+      tags: [Books]
+      summary: Create a book listing
+      description: The authenticated user's profile must be complete, including a WhatsApp number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookRequest"
+      responses:
+        "201":
+          description: Book created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /books/{id}:
+    parameters:
+      - $ref: "#/components/parameters/BookId"
+    get:
+      tags: [Books]
+      summary: Get a book
+      responses:
+        "200":
+          description: Book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
     patch:
-      tags: [profile]
-      summary: "[PLANNED] Update the authenticated user's profile"
-      description: >
-        Used to complete profile fields Firebase Auth doesn't collect
-        (currently: WhatsApp number). Not yet implemented.
+      tags: [Books]
+      summary: Update a book
+      description: Only the owner of the book can update it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBookRequest"
+      responses:
+        "200":
+          description: Updated book
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      tags: [Books]
+      summary: Delete a book
+      description: Only the owner of the book can delete it.
+      responses:
+        "204":
+          description: Book deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /books/{id}/requests:
+    parameters:
+      - $ref: "#/components/parameters/BookId"
+    post:
+      tags: [Borrow Requests]
+      summary: Request to borrow a book
+      description: The requester cannot request their own book and cannot have another pending request for the same book.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRequestBody"
+      responses:
+        "201":
+          description: Borrow request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /requests/sent:
+    get:
+      tags: [Borrow Requests]
+      summary: List requests sent by the current user
+      responses:
+        "200":
+          description: Sent requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /requests/incoming:
+    get:
+      tags: [Borrow Requests]
+      summary: List requests received by the current user
+      responses:
+        "200":
+          description: Incoming requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /requests/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    patch:
+      tags: [Borrow Requests]
+      summary: Accept or reject a borrow request
+      description: Only the book owner can change a pending request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusRequest"
+      responses:
+        "200":
+          description: Updated borrow request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /requests/{id}/confirm:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      tags: [Borrow Requests]
+      summary: Confirm a handoff
+      description: Either the owner or borrower can confirm. When both confirm, the request becomes active and the book becomes unavailable.
+      responses:
+        "200":
+          description: Updated borrow request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /requests/{id}/return:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+    post:
+      tags: [Borrow Requests]
+      summary: Mark a borrowed book as returned
+      description: Only the book owner can mark an active request as returned.
+      responses:
+        "200":
+          description: Updated borrow request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BorrowRequestEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me:
+    get:
+      tags: [Profile]
+      summary: Get the current user's profile
+      responses:
+        "200":
+          description: Current user's profile, books, and recent activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OwnProfileEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    patch:
+      tags: [Profile]
+      summary: Update the current user's profile
       requestBody:
         required: true
         content:
@@ -95,102 +320,176 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserEnvelope"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  # ---------------------------------------------------------------------
-  # Books
-  # ---------------------------------------------------------------------
-  /api/v1/books:
+  /users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserId"
     get:
-      tags: [books]
-      summary: "[IMPLEMENTED] List books"
-      description: Cursor-paginated, most recently listed first.
-      parameters:
-        - name: cursor
-          in: query
-          description: RFC3339 timestamp of the last book seen on the previous page.
-          schema:
-            type: string
-            format: date-time
-        - name: genre
-          in: query
-          description: "[PLANNED] Filter by genre. Not yet implemented."
-          schema:
-            type: string
-        - name: q
-          in: query
-          description: "[PLANNED] Search by title/author. Not yet implemented."
-          schema:
-            type: string
+      tags: [Profile]
+      summary: Get a public user profile
       responses:
         "200":
-          description: A page of books
+          description: Public profile, books, and recent activity
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListBooksEnvelope"
+                $ref: "#/components/schemas/PublicProfileEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /threads:
+    get:
+      tags: [Messages]
+      summary: List the current user's message threads
+      responses:
+        "200":
+          description: Message thread summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreadListEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /threads/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
     post:
-      tags: [books]
-      summary: "[IMPLEMENTED] Create a book listing"
+      tags: [Messages]
+      summary: Send a message in a borrow-request thread
+      description: The authenticated user must be a participant in the thread.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateBookRequest"
+              $ref: "#/components/schemas/SendMessageRequest"
       responses:
         "201":
-          description: The created book
+          description: Message created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BookEnvelope"
+                $ref: "#/components/schemas/MessageEnvelope"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /push/subscribe:
+    post:
+      tags: [Push Notifications]
+      summary: Register an FCM device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubscribeRequest"
+      responses:
+        "204":
+          description: Subscription saved
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/v1/books/{id}:
+  /push/unsubscribe:
+    post:
+      tags: [Push Notifications]
+      summary: Remove an FCM device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UnsubscribeRequest"
+      responses:
+        "204":
+          description: Subscription removed
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /books/{id}/forum:
     parameters:
       - $ref: "#/components/parameters/BookId"
     get:
-      tags: [books]
-      summary: "[IMPLEMENTED] Get a single book by ID"
-      description: Not yet implemented — currently only list/create/update/delete exist.
+      tags: [Forum]
+      summary: List forum posts for a book
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
       responses:
         "200":
-          description: The book
+          description: Forum posts
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BookEnvelope"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    patch:
-      tags: [books]
-      summary: "[IMPLEMENTED] Update a book"
-      description: >
-        Partial update — only provided fields are changed. Only the book's
-        owner may update it; all other callers receive 403.
+                $ref: "#/components/schemas/ForumListEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Forum]
+      summary: Create a forum post for a book
+      description: The authenticated user's profile must be complete.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateBookRequest"
+              $ref: "#/components/schemas/CreatePostRequest"
       responses:
-        "200":
-          description: The updated book
+        "201":
+          description: Forum post created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BookEnvelope"
+                $ref: "#/components/schemas/PostEnvelope"
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /forum/{postID}:
+    parameters:
+      - $ref: "#/components/parameters/PostId"
+    patch:
+      tags: [Forum]
+      summary: Edit a forum post
+      description: Only the author of the post can edit it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePostRequest"
+      responses:
+        "200":
+          description: Updated forum post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -198,366 +497,34 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
-      tags: [books]
-      summary: "[IMPLEMENTED] Delete a book"
-      description: Only the book's owner may delete it; all other callers receive 403.
+      tags: [Forum]
+      summary: Delete a forum post
+      description: Only the author of the post can delete it.
       responses:
         "204":
-          description: Deleted, no content returned
+          description: Post deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
-          
 
-  # ---------------------------------------------------------------------
-  # Borrow requests
-  # ---------------------------------------------------------------------
-  /api/v1/books/{id}/requests:
-    parameters:
-      - $ref: "#/components/parameters/BookId"
-    post:
-      tags: [requests]
-      summary: "[IMPLEMENTED] Request to borrow a book"
-      description: Not yet implemented.
-      responses:
-        "201":
-          description: The created borrow request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BorrowRequestEnvelope"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "409":
-          description: A pending request already exists for this book/user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-
-  /api/v1/requests/sent:
-    get:
-      tags: [requests]
-      summary: "[IMPLEMENTED] List borrow requests the authenticated user has sent"
-      responses:
-        "200":
-          description: Sent requests
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BorrowRequestListEnvelope"
-
-  /api/v1/requests/incoming:
-    get:
-      tags: [requests]
-      summary: "[IMPLEMENTED] List borrow requests for books the authenticated user owns"
-      responses:
-        "200":
-          description: Incoming requests
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BorrowRequestListEnvelope"
-
-  /api/v1/requests/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    patch:
-      tags: [requests]
-      summary: "[IMPLEMENTED] Accept or reject a borrow request"
-      description: >
-        Only the book's owner may accept/reject a request for their book.
-        Not yet implemented.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum: [accepted, rejected]
-              required: [status]
-      responses:
-        "200":
-          description: The updated request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BorrowRequestEnvelope"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/v1/requests/{id}/return:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    post:
-      tags: [requests]
-      summary: "[IMPLEMENTED] Mark a borrowed book as returned"
-      description: >
-        Owner-only. Runs transactionally: request status → `returned`, the
-        book's `available` flag → `true`, and the borrower's returned-book
-        count is updated (derived, not a stored counter — see backend
-        progress notes). Not yet implemented.
-      responses:
-        "200":
-          description: The updated request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BorrowRequestEnvelope"
-        "400":
-          description: Request is not currently in an active/accepted state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-          
-  /api/v1/requests/{id}/confirm:
-  parameters:
-    - name: id
-      in: path
-      required: true
-      schema:
-        type: integer
-  post:
-    tags: [requests]
-    summary: "[IMPLEMENTED] Confirm physical handoff of the book"
-    description: >
-      Either participant (owner or borrower) may call this once, after the
-      request has been accepted, to confirm the physical exchange actually
-      happened. The caller's role is determined server-side from the
-      request's owner/requester IDs — not a client-supplied role.
-
-      The book remains available until **both** parties have confirmed.
-      Once both `owner_confirmed` and `borrower_confirmed` are true, the
-      request transitions to `active` and the book's `available` flag is
-      set to `false`, atomically (single DB transaction — see backend
-      progress notes on internal/requests.Service.ConfirmHandoff).
-
-      If only one side has confirmed so far, the other participant is
-      notified (best-effort; a failed notification does not fail this
-      request).
-    responses:
-      "200":
-        description: >
-          The updated request. If this was the second confirmation,
-          `status` will be `active` and the book is now unavailable. If
-          this was the first confirmation, `status` remains `accepted`.
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BorrowRequestEnvelope"
-      "400":
-        description: Request has not been accepted yet, or is in a state that can't be confirmed
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ErrorEnvelope"
-      "401":
-        $ref: "#/components/responses/Unauthorized"
-      "403":
-        description: Caller is not a participant (owner or requester) in this request
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ErrorEnvelope"
-      "404":
-        $ref: "#/components/responses/NotFound"
-
-
-  # ---------------------------------------------------------------------
-  # Messages
-  # ---------------------------------------------------------------------
-  /api/v1/threads:
-    get:
-      tags: [messages]
-      summary: "[PLANNED] List the authenticated user's message threads"
-      description: >
-        Thread metadata (participants, book, last message preview) is served
-        from this REST endpoint. Live message content within an open thread
-        is delivered via a Firestore listener client-side, not via polling
-        this API — see PROJECT_STRUCTURE.md's Firestore section.
-      responses:
-        "200":
-          description: Threads
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ThreadListEnvelope"
-
-  /api/v1/threads/{id}:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    get:
-      tags: [messages]
-      summary: "[PLANNED] Get thread details (participants, associated book)"
-      responses:
-        "200":
-          description: Thread details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ThreadEnvelope"
-
-  /api/v1/threads/{id}/messages:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    post:
-      tags: [messages]
-      summary: "[PLANNED] Send a message in a thread"
-      description: >
-        Persists the message and mirrors it to Firestore for live delivery;
-        also triggers an FCM push notification to the other participant.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                body:
-                  type: string
-                  maxLength: 2000
-              required: [body]
-      responses:
-        "201":
-          description: The created message
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageEnvelope"
-
-  /api/v1/threads/{id}/poll:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-      - name: after
-        in: query
-        description: Only return messages after this message ID.
-        schema:
-          type: integer
-    get:
-      tags: [messages]
-      summary: "[PLANNED] Poll for new messages (fallback only)"
-      description: >
-        Reconciliation/fallback path — primary live delivery is via Firestore
-        listeners, not this endpoint. Useful for e.g. on-resume sync.
-      responses:
-        "200":
-          description: New messages since `after`
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageListEnvelope"
-
-  /api/v1/threads/{id}/read:
-    parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
-    post:
-      tags: [messages]
-      summary: "[PLANNED] Mark a thread as read"
-      responses:
-        "204":
-          description: Marked read
-
-  # ---------------------------------------------------------------------
-  # Push
-  # ---------------------------------------------------------------------
-  /api/v1/push/subscribe:
-    post:
-      tags: [push]
-      summary: "[PLANNED] Register an FCM token for push notifications"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                platform:
-                  type: string
-                  enum: [web, android]
-                fcm_token:
-                  type: string
-              required: [platform, fcm_token]
-      responses:
-        "204":
-          description: Subscribed
-
-  /api/v1/push/unsubscribe:
-    post:
-      tags: [push]
-      summary: "[PLANNED] Remove an FCM token"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                fcm_token:
-                  type: string
-              required: [fcm_token]
-      responses:
-        "204":
-          description: Unsubscribed
-
-  # ---------------------------------------------------------------------
-  # Admin
-  # ---------------------------------------------------------------------
-  /api/v1/admin/books/{id}/cover:
+  /admin/books/{id}/cover:
     parameters:
       - $ref: "#/components/parameters/BookId"
     patch:
-      tags: [admin]
-      summary: "[PLANNED] Manually override a book's cover image"
-      description: >
-        Requires the authenticated user's `is_admin` claim/flag to be true —
-        checked server-side against the local user record, not merely
-        "is the caller logged in" (a vulnerability present in the original
-        codebase that this rebuild fixes by design).
+      tags: [Admin]
+      summary: Set a book cover URL
+      description: Requires an authenticated user with admin privileges.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                cover_url:
-                  type: string
-              required: [cover_url]
+              $ref: "#/components/schemas/SetCoverRequest"
       responses:
         "200":
           description: Updated book
@@ -565,17 +532,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BookEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
-# ===========================================================================
 components:
   securitySchemes:
-    BearerAuth:
+    firebaseBearer:
       type: http
       scheme: bearer
-      bearerFormat: JWT
-      description: A Firebase ID token, obtained client-side via the Firebase Auth SDK.
+      bearerFormat: Firebase ID Token
 
   parameters:
     BookId:
@@ -584,133 +555,124 @@ components:
       required: true
       schema:
         type: integer
+        format: int32
+        minimum: 1
+    RequestId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    PostId:
+      name: postID
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+    Cursor:
+      name: cursor
+      in: query
+      description: RFC3339 timestamp used for cursor pagination.
+      schema:
+        type: string
+        format: date-time
 
   responses:
-    BadRequest:
-      description: Validation failed
+    ValidationError:
+      description: Invalid request
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     Unauthorized:
-      description: Missing or invalid Bearer token
+      description: Missing, malformed, invalid, or expired Firebase ID token
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     Forbidden:
-      description: Authenticated, but not permitted to perform this action
+      description: Authenticated user is not allowed to perform the operation
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
     NotFound:
-      description: Resource does not exist
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Conflict:
+      description: Request conflicts with existing state
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
 
   schemas:
-    # --- Envelope shapes — every response follows {data, error} ---
-    APIError:
+    ResponseEnvelope:
       type: object
       properties:
-        code:
-          type: string
-          description: Stable, machine-readable error code (e.g. "not_found", "forbidden").
-        message:
-          type: string
-          description: Human-readable message.
-      required: [code, message]
+        data: {}
 
     ErrorEnvelope:
       type: object
+      required: [error]
       properties:
         error:
           $ref: "#/components/schemas/APIError"
 
-    HealthEnvelope:
+    APIError:
       type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          examples:
+            - validation_failed
+            - unauthorized
+            - forbidden
+            - not_found
+            - conflict
+            - internal_error
+            - "too many request"
+        message:
+          type: string
+
+    HealthResponse:
+      type: object
+      required: [data]
       properties:
         data:
           type: object
+          required: [status, database]
           properties:
             status:
               type: string
-              example: ok
+              enum: [ok, unhealthy]
+            database:
+              type: string
+              enum: [ok, unreachable]
 
-    UserEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/User"
+    SuccessHealthResponse:
+      allOf:
+        - $ref: "#/components/schemas/HealthResponse"
 
-    BookEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/Book"
-
-    ListBooksEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/ListBooksResponse"
-
-    CoverSearchEnvelope:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/CoverSearchResult"
-
-    BorrowRequestEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/BorrowRequest"
-
-    BorrowRequestListEnvelope:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/BorrowRequest"
-
-    ThreadEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/Thread"
-
-    ThreadListEnvelope:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/Thread"
-
-    MessageEnvelope:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/Message"
-
-    MessageListEnvelope:
-      type: object
-      properties:
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/Message"
-
-    # --- Domain objects ---
     User:
       type: object
+      required: [id, name, email, created_at]
       properties:
         id:
           type: integer
@@ -718,25 +680,104 @@ components:
           type: string
         email:
           type: string
-          format: email
         whatsapp_number:
           type: string
           nullable: true
-          description: Null until the user completes their profile (Firebase Auth doesn't collect this).
+        last_active_at:
+          type: string
+          format: date-time
+          nullable: true
         created_at:
           type: string
           format: date-time
 
-    UpdateProfileRequest:
+    PublicUser:
       type: object
+      required: [id, name, created_at]
       properties:
+        id:
+          type: integer
         name:
           type: string
-        whatsapp_number:
+        last_active_at:
           type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    UserBookSummary:
+      type: object
+      required: [id, title, author, cover_url, available]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        cover_url:
+          type: string
+        available:
+          type: boolean
+
+    ActivityItem:
+      type: object
+      required: [type, description, timestamp]
+      properties:
+        type:
+          type: string
+          enum: [book_listed, request_sent, request_accepted]
+        description:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    OwnProfile:
+      type: object
+      required: [user, books, recent_activity]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        books:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserBookSummary"
+        recent_activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+
+    PublicProfile:
+      type: object
+      required: [user, books, recent_activity]
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        books:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserBookSummary"
+        recent_activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
 
     Book:
       type: object
+      required:
+        - id
+        - title
+        - author
+        - genre
+        - description
+        - cover_url
+        - available
+        - owner_id
+        - owner_name
+        - created_at
       properties:
         id:
           type: integer
@@ -760,20 +801,9 @@ components:
           type: string
           format: date-time
 
-    ListBooksResponse:
-      type: object
-      properties:
-        books:
-          type: array
-          items:
-            $ref: "#/components/schemas/Book"
-        next_cursor:
-          type: string
-          format: date-time
-          nullable: true
-
     CreateBookRequest:
       type: object
+      required: [title, author]
       properties:
         title:
           type: string
@@ -787,11 +817,9 @@ components:
           maxLength: 2000
         cover_url:
           type: string
-      required: [title, author]
 
     UpdateBookRequest:
       type: object
-      description: All fields optional — only provided fields are changed.
       properties:
         title:
           type: string
@@ -806,18 +834,20 @@ components:
         available:
           type: boolean
 
-    CoverSearchResult:
-      type: object
-      properties:
-        title:
-          type: string
-        author:
-          type: string
-        cover_url:
-          type: string
-
     BorrowRequest:
       type: object
+      required:
+        - id
+        - book_id
+        - book_title
+        - requester_id
+        - requester_name
+        - message
+        - owner_id
+        - status
+        - owner_confirmed
+        - borrower_confirmed
+        - created_at
       properties:
         id:
           type: integer
@@ -829,20 +859,40 @@ components:
           type: integer
         requester_name:
           type: string
+        message:
+          type: string
         owner_id:
           type: integer
         status:
           type: string
-          enum: [pending, accepted, rejected, returned]
+          enum: [pending, accepted, active, rejected, returned]
+        owner_confirmed:
+          type: boolean
+        borrower_confirmed:
+          type: boolean
         created_at:
           type: string
           format: date-time
 
-    Thread:
+    CreateRequestBody:
       type: object
       properties:
-        id:
-          type: integer
+        message:
+          type: string
+          maxLength: 500
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [accepted, rejected]
+
+    ThreadSummary:
+      type: object
+      required: [request_id, book_title, last_message_preview, last_message_at]
+      properties:
         request_id:
           type: integer
         book_title:
@@ -851,19 +901,14 @@ components:
           type: string
         last_message_preview:
           type: string
-        unread_count:
-          type: integer
-        updated_at:
+        last_message_at:
           type: string
           format: date-time
 
     Message:
       type: object
+      required: [sender_id, body, created_at]
       properties:
-        id:
-          type: integer
-        thread_id:
-          type: integer
         sender_id:
           type: integer
         body:
@@ -871,3 +916,184 @@ components:
         created_at:
           type: string
           format: date-time
+
+    SendMessageRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    SubscribeRequest:
+      type: object
+      required: [platform, fcm_token]
+      properties:
+        platform:
+          type: string
+          enum: [web, android]
+        fcm_token:
+          type: string
+          minLength: 1
+
+    UnsubscribeRequest:
+      type: object
+      required: [fcm_token]
+      properties:
+        fcm_token:
+          type: string
+
+    Post:
+      type: object
+      required: [id, book_id, user_id, user_name, body, edited, created_at]
+      properties:
+        id:
+          type: integer
+        book_id:
+          type: integer
+        user_id:
+          type: integer
+        user_name:
+          type: string
+        body:
+          type: string
+        edited:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreatePostRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 3000
+
+    UpdatePostRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+
+    SetCoverRequest:
+      type: object
+      required: [cover_url]
+      properties:
+        cover_url:
+          type: string
+
+    BookListData:
+      type: object
+      required: [books]
+      properties:
+        books:
+          type: array
+          items:
+            $ref: "#/components/schemas/Book"
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+
+    BorrowRequestListData:
+      type: array
+      items:
+        $ref: "#/components/schemas/BorrowRequest"
+
+    ForumListData:
+      type: object
+      required: [posts]
+      properties:
+        posts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Post"
+        next_cursor:
+          type: string
+          format: date-time
+          nullable: true
+
+    BookEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Book"
+
+    BookListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/BookListData"
+
+    BorrowRequestEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/BorrowRequest"
+
+    BorrowRequestListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/BorrowRequestListData"
+
+    UserEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/User"
+
+    OwnProfileEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/OwnProfile"
+
+    PublicProfileEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/PublicProfile"
+
+    ThreadListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ThreadSummary"
+
+    MessageEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Message"
+
+    PostEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Post"
+
+    ForumListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/ForumListData"
