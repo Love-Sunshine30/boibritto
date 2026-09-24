@@ -46,7 +46,7 @@ func main() {
 	router := httpserver.NewRouter(app)
 
 	// HTTP server
-	server := httpserver.NewServer("127.0.0.1:"+cfg.Port, router)
+	server := httpserver.NewServer("0.0.0.0:"+cfg.Port, router)
 
 	// Run blocks until the server exits — either an unexpected error, or a
 	// clean shutdown triggered by ctx being canceled (signal received).
