@@ -1,7 +1,9 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -45,7 +47,7 @@ func NewRouter(app *app.App) chi.Router {
 	}))
 
 	// --- Public routes ---
-	r.Get("/healthz", healthzHandler)
+	r.Get("/healthz", healthzHandler(app))
 
 	// initializing FCM push notification
 	pushStore := push.NewStore(app.DB)
@@ -90,6 +92,28 @@ func NewRouter(app *app.App) chi.Router {
 	return r
 }
 
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	apihttp.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+// internal/platform/httpserver/router.go
+func healthzHandler(a *app.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+
+		checks := map[string]string{"status": "ok"}
+		healthy := true
+
+		if err := a.DB.PingContext(ctx); err != nil {
+			checks["database"] = "unreachable"
+			healthy = false
+		} else {
+			checks["database"] = "ok"
+		}
+
+		status := http.StatusOK
+		if !healthy {
+			checks["status"] = "unhealthy"
+			status = http.StatusServiceUnavailable
+		}
+
+		apihttp.RespondJSON(w, status, checks)
+	}
 }
