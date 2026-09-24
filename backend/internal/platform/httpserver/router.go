@@ -1,7 +1,9 @@
 package httpserver
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -28,6 +30,9 @@ func NewRouter(app *app.App) chi.Router {
 	r.Use(httplog.RequestLogger(app.Logger))
 	r.Use(middleware.Recoverer)
 	r.Use(apihttp.WithLogger(app.Logger.Logger)) // makes *slog.Logger available to RespondError via context
+	r.Use(apihttp.TrustedProxyIP(app.Config.TrustedProxyCIDRs...))
+	r.Use(apihttp.RateLimit(300))
+	r.Use(apihttp.MaxBodySize(1 << 20)) // limit request body to 1MB
 
 	// CORS must run before any route-specific middleware (like RequireAuth),
 	// and it must handle OPTIONS preflight requests itself — it does, by
@@ -42,7 +47,7 @@ func NewRouter(app *app.App) chi.Router {
 	}))
 
 	// --- Public routes ---
-	r.Get("/healthz", healthzHandler)
+	r.Get("/healthz", healthzHandler(app))
 
 	// initializing FCM push notification
 	pushStore := push.NewStore(app.DB)
@@ -87,6 +92,28 @@ func NewRouter(app *app.App) chi.Router {
 	return r
 }
 
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	apihttp.RespondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+// internal/platform/httpserver/router.go
+func healthzHandler(a *app.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+
+		checks := map[string]string{"status": "ok"}
+		healthy := true
+
+		if err := a.DB.PingContext(ctx); err != nil {
+			checks["database"] = "unreachable"
+			healthy = false
+		} else {
+			checks["database"] = "ok"
+		}
+
+		status := http.StatusOK
+		if !healthy {
+			checks["status"] = "unhealthy"
+			status = http.StatusServiceUnavailable
+		}
+
+		apihttp.RespondJSON(w, status, checks)
+	}
 }
